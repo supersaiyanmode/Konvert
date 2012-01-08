@@ -1,0 +1,11 @@
+KONVERT
+
+This is a small utility to download youtube videos by emulating a 
+browser on www.online-convert.com
+
+konvert -a <youtube-url-here    This will enqueue download (on video.online-convert.com)
+
+konvert -c                      This will check for status of all previously enqueued
+                                downloads, and download the MP4, if the server is ready
+                                to serve.
+
