@@ -15,13 +15,8 @@ import shutil
 CONFIG_FILE = os.path.expanduser("~/.konvert-config")
 DOWNLOAD_PATH = os.path.expanduser("~/Downloads")
 
-def getXMLData(xmlObj,tag):
-    for node in xmlObj.getElementsByTagName(tag):
-        return node.firstChild.data
-
 def downloadReport(count,size,total):
     print "Downloaded [%s/%s]"%(str(count*size),str(total))
-
 
 def checkConfigFile():
     if not os.path.isfile(CONFIG_FILE):
@@ -45,22 +40,19 @@ class YoutubeDownload:
             self.br["external_url"] = url
         elif hashStr:
             self.hashStr = hashStr
-        else:
-            raise Exception()
         self.downloadPath = downloadPath
 
     @staticmethod
     def fromDict(obj):
         return YoutubeDownload(hashStr=obj['hashStr'],
-                        downloadPath=(obj['downloadPath'] if 'downloadPath' in obj else None))
+                        downloadPath=(obj['downloadPath'] if 'downloadPath' in obj else DOWNLOAD_PATH))
 
     def submit(self):
         self.br.submit()
         res = self.br.response().read()
         s = '<a href="http://www.online-convert.com/result/'
         res = res[res.index(s)+len(s):]
-        res = res[:res.index("\"")]
-        self.hashValue = res
+        self.hashValue = res[:res.index("\"")]
         return res
     
     def status(self):
@@ -68,20 +60,16 @@ class YoutubeDownload:
         if '<div id="info_box">' in res: #not downloaded as of now..
             s = 'class="info_active">' #Downloading source</div>'
             res = res[res.index(s)+len(s):]
-            res = res[:res.index("</div>")]
-            res = res.strip()
-            return False,res.lower()
-        elif '<iframe id="download_file" src="' in res: #donwload ready!
+            return res[:res.index("</div>")].strip().lower()
+        elif '<iframe id="download_file" src="' in res: #download ready!
             s = '<iframe id="download_file" src="'
             res = res[res.index(s)+len(s):]
-            res = res[:res.index("\"")]
-            print "Ready to download:",res
-            self.downloadUrl = res
-            return True, res
+            self.downloadUrl = res[:res.index("\"")]
+            print "Ready to download:",self.downloadUrl
+            return True, self.downloadUrl
         else:
             print "Unknown condition! :-("
             print res
-            return None
             
     def download(self):
         if not self.downloadUrl:
@@ -90,7 +78,7 @@ class YoutubeDownload:
         headers = str(headers)
         name = headers[headers.index('filename="')+len('filename="'):]
         name = name[:name.index("\"")]
-        newFileName = os.path.join(self.downloadPath or DOWNLOAD_PATH,name)
+        newFileName = os.path.join(self.downloadPath,name)
         shutil.move(filename,newFileName)
         return newFileName
 
@@ -125,15 +113,14 @@ if (options.check):
     for i in range(len(jsonObj['queue'])-1,-1,-1):
         y = YoutubeDownload.fromDict(jsonObj['queue'][i])
         status = y.status()
-        if status:
-            if status[0]:
-                print "Downloading:",jsonObj['queue'][i]['url']
-                fileName = y.download()
-                if fileName:
-                    del jsonObj['queue'][i]
-                    json.dump(jsonObj,open(CONFIG_FILE,"w"))
-                    subprocess.call(["notify-send", "-t", "800","Download completed: " + fileName])
-            else:
+        if status and status[0]:
+            print "Downloading:",jsonObj['queue'][i]['url']
+            fileName = y.download()
+            if fileName:
+                del jsonObj['queue'][i]
+                json.dump(jsonObj,open(CONFIG_FILE,"w"))
+                subprocess.call(["notify-send", "-t", "800","Download completed: " + fileName])
+        elif status:
                 print "Status:",status[1]
         else:
             subprocess.call(["notify-send", "-t", "0","Error! Unknown state of " + jsonObj['queue'][i]['url']])
