@@ -1,0 +1,140 @@
+#!/usr/bin/python
+import urllib
+import urllib2
+import optparse
+import json
+import os.path
+import sys
+import subprocess
+import mechanize
+import cookielib
+import xml.dom.minidom
+import shutil
+
+
+CONFIG_FILE = os.path.expanduser("~/.konvert-config")
+DOWNLOAD_PATH = os.path.expanduser("~/Downloads")
+
+def getXMLData(xmlObj,tag):
+    for node in xmlObj.getElementsByTagName(tag):
+        return node.firstChild.data
+
+def downloadReport(count,size,total):
+    print "Downloaded [%s/%s]"%(str(count*size),str(total))
+
+
+def checkConfigFile():
+    if not os.path.isfile(CONFIG_FILE):
+        f = open(CONFIG_FILE,'w')
+        f.write("{}")
+        f.close()
+
+class YoutubeDownload:
+    def __init__(self,url=None,hashStr=None,downloadPath=None):
+        self.br = mechanize.Browser()
+        self.br.set_cookiejar(cookielib.LWPCookieJar())
+        self.br.set_handle_equiv(True)
+        self.br.set_handle_redirect(True)
+        self.br.set_handle_referer(True)
+        self.br.set_handle_robots(False)
+        self.br.set_handle_refresh(mechanize._http.HTTPRefreshProcessor(), max_time=1)
+        self.br.addheaders = [('User-agent', 'Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.0.1) Gecko/2008071615 Fedora/3.0.1-1.fc9 Firefox/3.0.1')]
+        if url:
+            self.br.open('http://video.online-convert.com/convert-to-mp4')
+            self.br.select_form(nr=0)
+            self.br["external_url"] = url
+        elif hashStr:
+            self.hashStr = hashStr
+        else:
+            raise Exception()
+        self.downloadPath = downloadPath
+
+    @staticmethod
+    def fromDict(obj):
+        return YoutubeDownload(hashStr=obj['hashStr'],
+                        downloadPath=(obj['downloadPath'] if 'downloadPath' in obj else None))
+
+    def submit(self):
+        self.br.submit()
+        res = self.br.response().read()
+        s = '<a href="http://www.online-convert.com/result/'
+        res = res[res.index(s)+len(s):]
+        res = res[:res.index("\"")]
+        self.hashValue = res
+        return res
+    
+    def status(self):
+        res = urllib2.urlopen('http://www.online-convert.com/download-try/'+self.hashStr).read()
+        if '<div id="info_box">' in res: #not downloaded as of now..
+            s = 'class="info_active">' #Downloading source</div>'
+            res = res[res.index(s)+len(s):]
+            res = res[:res.index("</div>")]
+            res = res.strip()
+            return False,res.lower()
+        elif '<iframe id="download_file" src="' in res: #donwload ready!
+            s = '<iframe id="download_file" src="'
+            res = res[res.index(s)+len(s):]
+            res = res[:res.index("\"")]
+            print "Ready to download:",res
+            self.downloadUrl = res
+            return True, res
+        else:
+            print "Unknown condition! :-("
+            print res
+            return None
+            
+    def download(self):
+        if not self.downloadUrl:
+            return None
+        filename,headers = urllib.urlretrieve(self.downloadUrl,reporthook=downloadReport)
+        headers = str(headers)
+        name = headers[headers.index('filename="')+len('filename="'):]
+        name = name[:name.index("\"")]
+        newFileName = os.path.join(self.downloadPath or DOWNLOAD_PATH,name)
+        shutil.move(filename,newFileName)
+        return newFileName
+
+checkConfigFile()
+parser = optparse.OptionParser(usage="usage: %prog [options] <command> [<stuffs specific to command>]")
+parser.add_option("-a","--add",action="store",dest="url",help="The youtube URL to download")
+parser.add_option("-H","--hash",action="store",dest="hash",help="Check status using the given hash")
+parser.add_option("-c","--check",action="store_true",dest="check",help="Check status using the given hash")
+parser.add_option("-p","--path",action="store",dest="path",help="Path to download file")
+(options, args) = parser.parse_args()
+
+if (options.url):
+    y = YoutubeDownload(options.url,downloadPath=options.path)
+    h = y.submit()
+    print "hash:",h
+    obj = json.load(open(CONFIG_FILE,"r"))
+    if 'queue' not in obj:
+        obj['queue'] = []
+    item = {"hashStr":h,"url":options.url}
+    if options.path:
+        item['downloadPath'] = options.path
+    obj['queue'].append(item)
+    json.dump(obj,open(CONFIG_FILE,"w"))
+        
+if (options.hash):
+    YoutubeDownload.fromHash(options.hash).status()
+
+if (options.check):
+    jsonObj = json.load(open(CONFIG_FILE,"r"))
+    if 'queue' not in jsonObj:
+        sys.exit(0)
+    for i in range(len(jsonObj['queue'])-1,-1,-1):
+        y = YoutubeDownload.fromDict(jsonObj['queue'][i])
+        status = y.status()
+        if status:
+            if status[0]:
+                print "Downloading:",jsonObj['queue'][i]['url']
+                fileName = y.download()
+                if fileName:
+                    del jsonObj['queue'][i]
+                    json.dump(jsonObj,open(CONFIG_FILE,"w"))
+                    subprocess.call(["notify-send", "-t", "800","Download completed: " + fileName])
+            else:
+                print "Status:",status[1]
+        else:
+            subprocess.call(["notify-send", "-t", "0","Error! Unknown state of " + jsonObj['queue'][i]['url']])
+            sys.exit(1)
