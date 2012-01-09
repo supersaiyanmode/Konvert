@@ -10,7 +10,7 @@ import mechanize
 import cookielib
 import xml.dom.minidom
 import shutil
-
+import re
 
 CONFIG_FILE = os.path.expanduser("~/.konvert-config")
 DOWNLOAD_PATH = os.path.expanduser("~/Downloads")
@@ -53,7 +53,7 @@ class YoutubeDownload:
         s = '<a href="http://www.online-convert.com/result/'
         res = res[res.index(s)+len(s):]
         self.hashValue = res[:res.index("\"")]
-        return res
+        return self.hashValue
     
     def status(self):
         res = urllib2.urlopen('http://www.online-convert.com/download-try/'+self.hashStr).read()
@@ -82,27 +82,47 @@ class YoutubeDownload:
         shutil.move(filename,newFileName)
         return newFileName
 
-checkConfigFile()
-parser = optparse.OptionParser(usage="usage: %prog [options] <command> [<stuffs specific to command>]")
-parser.add_option("-a","--add",action="store",dest="url",help="The youtube URL to download")
-parser.add_option("-H","--hash",action="store",dest="hash",help="Check status using the given hash")
-parser.add_option("-c","--check",action="store_true",dest="check",help="Check status using the given hash")
-parser.add_option("-p","--path",action="store",dest="path",help="Path to download file")
-(options, args) = parser.parse_args()
-
-if (options.url):
-    y = YoutubeDownload(options.url,downloadPath=options.path)
+def downloadYoutubeVideo(url,path):
+    y = YoutubeDownload(url=url,downloadPath=options.path)
     h = y.submit()
     print "hash:",h
     obj = json.load(open(CONFIG_FILE,"r"))
     if 'queue' not in obj:
         obj['queue'] = []
-    item = {"hashStr":h,"url":options.url}
-    if options.path:
-        item['downloadPath'] = options.path
+    item = {"hashStr":h,"url":url}
+    if path:
+        item['downloadPath'] = path
     obj['queue'].append(item)
     json.dump(obj,open(CONFIG_FILE,"w"))
-        
+
+checkConfigFile()
+parser = optparse.OptionParser(usage="usage: %prog [options] <command> [<stuffs specific to command>]")
+parser.add_option("-a","--add",action="store",dest="url",help="The youtube URL to download")
+parser.add_option("-H","--hash",action="store",dest="hash",help="Check status using the given hash")
+parser.add_option("-C","--channel",action="store",dest="channel",help="Download videos of a user.")
+parser.add_option("-c","--check",action="store_true",dest="check",help="Check status using the given hash")
+parser.add_option("-p","--path",action="store",dest="path",help="Path to download file")
+(options, args) = parser.parse_args()
+
+if (options.channel):
+    url = "http://gdata.youtube.com/feeds/api/users/%s/uploads"%options.channel
+    response = urllib2.urlopen(url).read()
+    l = []
+    for matchObj in re.finditer(r'/watch\?v=.{11}', response):
+        l.append("http://www.youtube.com" + response[matchObj.start():matchObj.end()])
+    l = list(set(l))
+    print "Found %d videos uploaded by user."%len(l)
+    for x in l:
+        print x,"-"
+        res = raw_input(" Download? [Yes/no] :").lower()
+        if (res in ('y','yes')):
+            downloadYoutubeVideo(x,options.path)
+            print "Added to download List!"
+
+    
+if (options.url):
+    downloadYoutubeVideo(options.url)
+    
 if (options.hash):
     YoutubeDownload.fromHash(options.hash).status()
 
