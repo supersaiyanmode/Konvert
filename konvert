@@ -118,10 +118,9 @@ if (options.channel):
         if (res in ('y','yes')):
             downloadYoutubeVideo(x,options.path)
             print "Added to download List!"
-
     
 if (options.url):
-    downloadYoutubeVideo(options.url)
+    downloadYoutubeVideo(options.url,options.path)
     
 if (options.hash):
     YoutubeDownload.fromHash(options.hash).status()
