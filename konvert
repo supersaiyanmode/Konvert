@@ -60,7 +60,7 @@ class YoutubeDownload:
         if '<div id="info_box">' in res: #not downloaded as of now..
             s = 'class="info_active">' #Downloading source</div>'
             res = res[res.index(s)+len(s):]
-            return res[:res.index("</div>")].strip().lower()
+            return False, res[:res.index("</div>")].strip().lower()
         elif '<iframe id="download_file" src="' in res: #download ready!
             s = '<iframe id="download_file" src="'
             res = res[res.index(s)+len(s):]
@@ -69,7 +69,7 @@ class YoutubeDownload:
             return True, self.downloadUrl
         else:
             print "Unknown condition! :-("
-            print res
+            print False, res
             
     def download(self):
         if not self.downloadUrl:
@@ -138,6 +138,7 @@ if (options.check):
             if fileName:
                 del jsonObj['queue'][i]
                 json.dump(jsonObj,open(CONFIG_FILE,"w"))
+                #DISPLAY=:0.0 XAUTHORITY=~/.Xauthority notify-send test
                 subprocess.call(["notify-send", "-t", "800","Download completed: " + fileName])
         elif status:
                 print "Status:",status[1]
